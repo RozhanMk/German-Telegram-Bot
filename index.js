@@ -1,13 +1,26 @@
 import dotenv from 'dotenv';
 import { Telegraf } from 'telegraf';
 import Groq from "groq-sdk";
+import { MongoClient } from 'mongodb';
 
 dotenv.config();
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-const users = {};
+const mongoUri = process.env.MONGO_URI;
+const client = new MongoClient(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true });
+
+async function connectToDatabase() {
+  try {
+    await client.connect();
+    console.log('Connected to MongoDB');
+  } catch (error) {
+    console.error('Error connecting to MongoDB:', error);
+  }
+}
+
+connectToDatabase();
 
 async function getGermanStory(level) {
   const prompt = `Tell me a German story for a ${level} level learner.`;
@@ -42,27 +55,39 @@ bot.start((ctx) => {
 
 bot.on('callback_query', async (ctx) => {
   const level = ctx.callbackQuery.data;
-  users[ctx.chat.id] = { level };
+  const db = client.db('telegram_bot');
+  const usersCollection = db.collection('users');
+
+  await usersCollection.updateOne(
+    { chatId: ctx.chat.id },
+    { $set: { level } },
+    { upsert: true }
+  );
+
   ctx.reply(`You selected the ${level} level. I will send you a story every 6 hours.`);
 });
 
-bot.on('text', (ctx) => {
+bot.on('message', (ctx) => {
   ctx.reply('Use the command /start to choose your story level!');
 });
 
 async function sendStoriesToAllUsers() {
-  for (const chatId in users) {
-    const user = users[chatId];
+  const db = client.db('telegram_bot');
+  const usersCollection = db.collection('users');
+  const users = await usersCollection.find({}).toArray();
+
+  for (const user of users) {
     const storyLevel = user.level || 'A1'; // Default to 'A1' if level not set
 
     try {
       const germanStory = await getGermanStory(storyLevel);
-      await bot.telegram.sendMessage(chatId, germanStory);
+      await bot.telegram.sendMessage(user.chatId, germanStory);
     } catch (error) {
-      console.error(`Error sending story to user ${chatId}:`, error);
+      console.error(`Error sending story to user ${user.chatId}:`, error);
     }
   }
 }
+
 
 setInterval(sendStoriesToAllUsers, 6 * 60 * 60 * 1000); // 6 hours in milliseconds
 
