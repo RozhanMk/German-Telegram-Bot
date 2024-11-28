@@ -58,15 +58,22 @@ bot.on('callback_query', async (ctx) => {
   const db = client.db('telegram_bot');
   const usersCollection = db.collection('users');
 
+  const user = await usersCollection.findOne({ chatId: ctx.chat.id });
+
+  if (user && user.initialStorySent) {
+    ctx.reply("You've already received your initial story. I'll keep sending you new stories every 6 hours!");
+    return;
+  }
+
   await usersCollection.updateOne(
     { chatId: ctx.chat.id },
-    { $set: { level } },
+    { $set: { level, initialStorySent: true } },
     { upsert: true }
   );
 
   ctx.reply(`You selected the ${level} level. I will send all users a story every 6 hours. This is your first story:`);
 
-  //send the initial story based on the chosen level
+  // Send the initial story
   const germanStory = await getGermanStory(level);
   await ctx.reply(germanStory);
 });
@@ -95,6 +102,8 @@ async function sendStoriesToAllUsers() {
 
 setInterval(sendStoriesToAllUsers, 6 * 60 * 60 * 1000); // 6 hours in milliseconds
 
-bot.launch();
+bot.launch().catch((err) => {
+  console.error('Error launching bot:', err);
+});
 
 console.log('Bot is running...');
