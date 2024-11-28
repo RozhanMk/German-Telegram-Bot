@@ -64,7 +64,11 @@ bot.on('callback_query', async (ctx) => {
     { upsert: true }
   );
 
-  ctx.reply(`You selected the ${level} level. I will send you a story every 6 hours.`);
+  ctx.reply(`You selected the ${level} level. I will send all users a story every 6 hours. This is your first story:`);
+
+  //send the initial story based on the chosen level
+  const germanStory = await getGermanStory(level);
+  await ctx.reply(germanStory);
 });
 
 bot.on('message', (ctx) => {
