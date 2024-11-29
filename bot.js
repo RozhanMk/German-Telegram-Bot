@@ -74,28 +74,30 @@ bot.on('callback_query', async (ctx) => {
   //initialize lastStorySent to the current timestamp
   const now = Date.now();
 
-  await usersCollection.updateOne(
-    { chatId: ctx.chat.id },
-    { $set: { level, lastStorySent: now } },
-    { upsert: true }
-  );
-
-  ctx.reply(`You selected the ${level} level. I will send you a story every 6 hours.`);
-
-  //check if the user has already received the initial story
+  //check if the user has already entered the bot
   const user = await usersCollection.findOne({ chatId: ctx.chat.id });
 
-  if (!user || !user.initialStorySent) {
+  if (!user) {
     const germanStory = await getGermanStory(level);
     await ctx.reply(germanStory);
 
-    //mark the user as having received the initial story
     await usersCollection.updateOne(
       { chatId: ctx.chat.id },
-      { $set: { initialStorySent: true } },
+      { $set: { level, lastStorySent: now } },
       { upsert: true }
     );
+    await ctx.reply(`You selected the ${level} level. I will send you a story every 6 hours.`);
+
   }
+  else{
+    await usersCollection.updateOne(
+      { chatId: ctx.chat.id },
+      { $set: { level } },
+      { upsert: true }
+    );
+    await ctx.reply(`Your level got changed to ${level} now. I will send you a story every 6 hours.`);
+  }
+
 });
 
 bot.on('message', (ctx) => {
