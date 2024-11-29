@@ -58,24 +58,31 @@ bot.on('callback_query', async (ctx) => {
   const db = client.db('telegram_bot');
   const usersCollection = db.collection('users');
 
-  const user = await usersCollection.findOne({ chatId: ctx.chat.id });
-
-  if (user && user.initialStorySent) {
-    ctx.reply("You've already received your initial story. I'll keep sending you new stories every 6 hours!");
-    return;
-  }
+  //initialize lastStorySent to the current timestamp
+  const now = Date.now();
 
   await usersCollection.updateOne(
     { chatId: ctx.chat.id },
-    { $set: { level, initialStorySent: true } },
+    { $set: { level, lastStorySent: now } },
     { upsert: true }
   );
 
-  ctx.reply(`You selected the ${level} level. I will send all users a story every 6 hours. This is your first story:`);
+  ctx.reply(`You selected the ${level} level. I will send you a story every 6 hours.`);
 
-  // Send the initial story
-  const germanStory = await getGermanStory(level);
-  await ctx.reply(germanStory);
+  //check if the user has already received the initial story
+  const user = await usersCollection.findOne({ chatId: ctx.chat.id });
+
+  if (!user || !user.initialStorySent) {
+    const germanStory = await getGermanStory(level);
+    await ctx.reply(germanStory);
+
+    //mark the user as having received the initial story
+    await usersCollection.updateOne(
+      { chatId: ctx.chat.id },
+      { $set: { initialStorySent: true } },
+      { upsert: true }
+    );
+  }
 });
 
 bot.on('message', (ctx) => {
@@ -99,8 +106,38 @@ async function sendStoriesToAllUsers() {
   }
 }
 
+async function checkAndSendStories() {
+  const db = client.db('telegram_bot');
+  const usersCollection = db.collection('users');
+  const users = await usersCollection.find({}).toArray();
 
-setInterval(sendStoriesToAllUsers, 6 * 60 * 60 * 1000); // 6 hours in milliseconds
+  for (const user of users) {
+    const storyLevel = user.level || 'A1'; 
+
+    //check if it's time to send a story
+    const lastStorySent = user.lastStorySent || 0;
+    const now = Date.now();
+    const sixHoursInMillis = 6 * 60 * 60 * 1000;
+
+    if (now - lastStorySent >= sixHoursInMillis) {
+      try {
+        const germanStory = await getGermanStory(storyLevel);
+        await bot.telegram.sendMessage(user.chatId, germanStory);
+
+        //update the last story sent time
+        await usersCollection.updateOne(
+          { chatId: user.chatId },
+          { $set: { lastStorySent: now } }
+        );
+      } catch (error) {
+        console.error(`Error sending story to user ${user.chatId}:`, error);
+      }
+    }
+  }
+}
+
+
+setInterval(checkAndSendStories, 1 * 60 * 60 * 1000); // 1 hours in milliseconds
 
 bot.launch().catch((err) => {
   console.error('Error launching bot:', err);
