@@ -2,9 +2,11 @@ import dotenv from 'dotenv';
 import { Telegraf } from 'telegraf';
 import Groq from "groq-sdk";
 import { MongoClient } from 'mongodb';
+import express from 'express';
 
 dotenv.config();
 
+const app = express(); 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -21,6 +23,17 @@ async function connectToDatabase() {
 }
 
 connectToDatabase();
+
+//ping endpoint to keep the app alive
+app.get('/keep-alive', (req, res) => {
+  res.send('App is alive');
+});
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Server is listening on port ${port}`);
+});
+
 
 async function getGermanStory(level) {
   const prompt = `Tell me a German story for a ${level} level learner.`;
